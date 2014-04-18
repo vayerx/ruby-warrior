@@ -3,9 +3,20 @@ class Player
   MAX_HEALTH = 20
   ENEMY_DMG = 3
 
+  def initialize
+    @bound_amount = 0
+  end
+
   def play_turn(warrior)
     units = warrior.listen
     @captives = units.select{ |space| space.captive? } unless @captives
+    @captives_amount = @captives.size if @captives_amount.nil?
+
+    if @captive_dir
+      @captives_amount -= 1 if warrior.feel(@captive_dir).empty?
+      @bound_amount -= 1 if warrior.feel(@captive_dir).enemy?
+      @captive_dir = nil
+    end
 
     if units.empty?
         get_me_out_of_here(warrior)   # no one left
@@ -27,7 +38,8 @@ class Player
     if hurry || warrior.health >= min_health 
       return self if handle_units(warrior, target_units, :captive?) do |space, dir|
         warrior.rescue!(dir)
-        @captives.delete(space)
+        @captives.delete(space) # doesn't work ;(
+        @captive_dir = dir
       end
     end
 
@@ -37,6 +49,7 @@ class Player
       enemy_dir = enemies.find { |dir| dir != target_dir }  # out-of-way enemy
       if enemy_dir
         warrior.bind!(enemy_dir)
+        @bound_amount += 1
         return self
       end
     end
@@ -48,7 +61,7 @@ class Player
     end
 
     # am I bleeding in a safe place?
-    if warrior.health < min_health && enemies.empty? && !target_units.empty?
+    if warrior.health < min_health && enemies.empty? && (target_units.size + enemies.size + @bound_amount > @captives_amount)
       warrior.rest!
       return self
     end
