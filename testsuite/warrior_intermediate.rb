@@ -9,6 +9,7 @@ class Player
     @captives_amount = nil
     @bound_amount = 0
     @evacuation_dir = nil
+    @evacuation_enemies = 0
   end
 
   def play_turn(warrior)
@@ -22,7 +23,7 @@ class Player
       @captive_dir = nil
     end
 
-    if units.empty? && @evacuation_dir.nil?
+    if units.empty? && !@evacuation_dir
         get_me_out_of_here(warrior)   # no one left
     else
       enemies = get_nearby_units(warrior, :enemy?)
@@ -36,7 +37,8 @@ class Player
   end
 
   def clean_em_up(warrior, target_units, enemies, all_units, hurry = false)
-    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, (all_units.size - @captives_amount) * ENEMY_DMG * MAX_BLOWS].min
+    enemies_amount = warrior.respond_to?(:listen) ? all_units.size - @captives_amount : (@evacuation_enemies + @bound_amount + enemies.size)
+    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, enemies_amount * ENEMY_DMG * MAX_BLOWS].min
 
     # handle surrunding
     if enemies.size > 1
@@ -75,7 +77,7 @@ class Player
       end
       if warrior.feel(dir).empty?
         warrior.walk!(dir)
-        return :done
+        break :done
       end
     end
   end
@@ -92,6 +94,7 @@ class Player
     if @evacuation_dir
       yield opposite_direction(@evacuation_dir)
       @evacuation_dir = nil
+      @evacuation_enemies = 0
     elsif warrior.respond_to?(:direction_of)
       units.each do |space|
         return self if yield(warrior.direction_of(space)) == :done
@@ -171,10 +174,11 @@ class Player
   end
 
   def evacuate(warrior, enemies)
-    if warrior.respond_to?(:bind!) && enemies.count == 1
+    if warrior.respond_to?(:bind!) && enemies.size == 1
       bind_enemy(warrior, enemies[0])   # don't evacuate if enemy can be captured
     else
       @evacuation_dir = ALL_DIRS.find { |d| warrior.feel(d).empty? && !warrior.feel(d).stairs? } || :forward
+      @evacuation_enemies = enemies.size
       warrior.walk!(@evacuation_dir)
     end
   end
