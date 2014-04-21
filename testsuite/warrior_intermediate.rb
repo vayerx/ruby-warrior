@@ -2,6 +2,7 @@ class Player
   ALL_DIRS = [:left, :forward, :right, :backward]
   MAX_HEALTH = 20
   ENEMY_DMG = 3
+  MAX_BLOWS = 5
 
   def initialize
     @captives = nil
@@ -35,7 +36,7 @@ class Player
   end
 
   def clean_em_up(warrior, target_units, enemies, all_units, hurry = false)
-    min_health = hurry ? MAX_HEALTH/2 : MAX_HEALTH
+    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, (all_units.size - @captives_amount) * ENEMY_DMG * MAX_BLOWS].min
 
     # handle surrunding
     if enemies.size > 1
