@@ -8,6 +8,7 @@ class Player
     @captives = nil
     @captives_amount = nil
     @bound_amount = 0
+    @bound_dirs = []
     @evacuation_dir = nil
     @evacuation_enemies = 0
   end
@@ -55,13 +56,9 @@ class Player
 
     # look around for enemies
     return self if handle_units(warrior, target_units, :enemy?) do |space, dir|
-      captive_distance = @captives.map{ |space| warrior.distance_of(space) }.min rescue 10
-      if warrior.respond_to?(:look) && (warrior.look(dir).count{ |space| space.enemy? } > 1) && captive_distance > 2
-        warrior.detonate!(dir)
-      else
-        warrior.attack!(dir)
-      end
+      attack(warrior, dir)
     end
+    return attack(warrior, @bound_dirs.shift) unless @bound_dirs.empty? || hurry
 
     # look around for victims
     return self if handle_units(warrior, target_units, :captive?) do |space, dir|
@@ -76,9 +73,18 @@ class Player
         dir = detour_heuristics(warrior, dir)
       end
       if warrior.feel(dir).empty?
-        warrior.walk!(dir)
+        move(warrior, dir)
         break :done
       end
+    end
+  end
+
+  def attack(warrior, dir)
+    captive_distance = @captives.map{ |space| warrior.distance_of(space) }.min || raise rescue 10
+    if warrior.respond_to?(:look) && (warrior.look(dir).count{ |space| space.enemy? } > 1) && captive_distance > 2
+      warrior.detonate!(dir)
+    else
+      warrior.attack!(dir)
     end
   end
 
@@ -126,7 +132,7 @@ class Player
 
   def get_me_out_of_here(warrior)
     dir = warrior.direction_of_stairs
-    warrior.walk!(if warrior.feel(dir).empty? then dir else detour_heuristics(warrior, dir) end)
+    move(warrior, if warrior.feel(dir).empty? then dir else detour_heuristics(warrior, dir) end)
   end
 
   def detect_units(warrior)
@@ -164,13 +170,14 @@ class Player
   end
 
   def bind_enemy(warrior, dir)
-    warrior.bind!(dir)
     @bound_amount += 1
+    @bound_dirs << dir
+    warrior.bind!(dir)
   end
 
   def need_evacuation?(warrior, enemies)
     required = 1 + enemies.size * ENEMY_DMG
-    return enemies.size < 4 && warrior.health < required
+    return ALL_DIRS.any? { |d| warrior.feel(d).empty? } && warrior.health < required
   end
 
   def evacuate(warrior, enemies)
@@ -179,7 +186,12 @@ class Player
     else
       @evacuation_dir = ALL_DIRS.find { |d| warrior.feel(d).empty? && !warrior.feel(d).stairs? } || :forward
       @evacuation_enemies = enemies.size
-      warrior.walk!(@evacuation_dir)
+      move(warrior, @evacuation_dir)
     end
+  end
+
+  def move(warrior, dir)
+    @bound_dirs = []  # TODO floor map
+    warrior.walk!(dir)
   end
 end
