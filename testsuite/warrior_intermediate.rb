@@ -22,6 +22,7 @@ class Player
     if @captive_dir
       @captives_amount -= 1 if warrior.feel(@captive_dir).empty?
       @bound_amount -= 1 if warrior.feel(@captive_dir).enemy?
+      @bound_damage = 0 unless @bound_amount
       @captive_dir = nil
     end
 
@@ -39,7 +40,8 @@ class Player
   end
 
   def clean_em_up(warrior, target_units, enemies, all_units, hurry = false)
-    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, damage_estimate(all_units) + @bound_damage + 1].min
+    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, 1 + damage_estimate(all_units) + @bound_damage].min
+    puts "health=#{warrior.health} min_health=#{min_health}: damage_estimate=#{damage_estimate(all_units)} @bound_damage=#{@bound_damage}"
 
     # handle surrunding
     if enemies.size > 1
@@ -98,12 +100,13 @@ class Player
     return true
   end
 
-  def unit_damage(unit)
-    (unit.health.fdiv(ATTACK_POWER).ceil - 1) * unit.attack_power
+  def unit_damage(unit, priority)
+    bonus = (priority == :first_strike) ? 1 : 0
+    (unit.health.fdiv(ATTACK_POWER).ceil - bonus) * unit.attack_power
   end
 
   def damage_estimate(units)
-    @bound_amount + (units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit) }.reduce(:+) || 0)
+    units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit, :first_strike) }.reduce(:+) || 0
   end
 
   def select_walking_direction(warrior, units)
@@ -181,12 +184,12 @@ class Player
   def bind_enemy(warrior, dir)
     @bound_amount += 1
     @bound_dirs << dir
-    @bound_damage = unit_damage(warrior.feel(dir).unit)
+    @bound_damage = unit_damage(warrior.feel(dir).unit, :normal_strike)
     warrior.bind!(dir)
   end
 
   def need_evacuation?(warrior, enemies)
-    required_health = 1 + enemies.size * ENEMY_DMG
+    required_health = 1 + (enemies.map{ |dir| warrior.feel(dir).unit.attack_power }.reduce(:+) || 0)
     return warrior.health < required_health && ALL_DIRS.any? { |d| warrior.feel(d).empty? }
   end
 
@@ -201,7 +204,6 @@ class Player
 
   def move(warrior, dir)
     @bound_dirs = []  # TODO floor map
-    @bound_damage = 0
     warrior.walk!(dir)
   end
 end
