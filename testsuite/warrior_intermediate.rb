@@ -1,6 +1,7 @@
 class Player
   ALL_DIRS = [:left, :forward, :right, :backward]
   MAX_HEALTH = 20
+  ATTACK_POWER = 5
   ENEMY_DMG = 3
   MAX_BLOWS = 5
 
@@ -9,8 +10,8 @@ class Player
     @captives_amount = nil
     @bound_amount = 0
     @bound_dirs = []
+    @bound_damage = 0
     @evacuation_dir = nil
-    @evacuation_enemies = 0
   end
 
   def play_turn(warrior)
@@ -38,8 +39,7 @@ class Player
   end
 
   def clean_em_up(warrior, target_units, enemies, all_units, hurry = false)
-    enemies_amount = warrior.respond_to?(:listen) ? all_units.size - @captives_amount : (@evacuation_enemies + @bound_amount + enemies.size)
-    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, enemies_amount * ENEMY_DMG * MAX_BLOWS].min
+    min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, damage_estimate(all_units) + @bound_damage + 1].min
 
     # handle surrunding
     if enemies.size > 1
@@ -56,6 +56,7 @@ class Player
 
     # look around for enemies
     return self if handle_units(warrior, target_units, :enemy?) do |space, dir|
+      # TODO find direction with the most amount of enemies
       attack(warrior, dir)
     end
     return attack(warrior, @bound_dirs.shift) unless @bound_dirs.empty? || hurry
@@ -81,6 +82,7 @@ class Player
 
   def attack(warrior, dir)
     captive_distance = @captives.map{ |space| warrior.distance_of(space) }.min || raise rescue 10
+    # TODO detonate the last unit if enough health
     if warrior.respond_to?(:look) && (warrior.look(dir).count{ |space| space.enemy? } > 1) && captive_distance > 2
       warrior.detonate!(dir)
     else
@@ -96,11 +98,22 @@ class Player
     return true
   end
 
+  def unit_damage(unit)
+    unit.health.fdiv(ATTACK_POWER).ceil * unit.attack_power
+  end
+
+  def damage_estimate(units)
+    begin
+      units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit) }.reduce(:+) || 0
+    rescue
+      (units.size - @captives_amount) * ENEMY_DMG * MAX_BLOWS
+    end
+  end
+
   def select_walking_direction(warrior, units)
     if @evacuation_dir
       yield opposite_direction(@evacuation_dir)
       @evacuation_dir = nil
-      @evacuation_enemies = 0
     elsif warrior.respond_to?(:direction_of)
       units.each do |space|
         return self if yield(warrior.direction_of(space)) == :done
@@ -172,6 +185,7 @@ class Player
   def bind_enemy(warrior, dir)
     @bound_amount += 1
     @bound_dirs << dir
+    @bound_damage = unit_damage(warrior.feel(dir).unit)
     warrior.bind!(dir)
   end
 
@@ -185,13 +199,13 @@ class Player
       bind_enemy(warrior, enemies[0])   # don't evacuate if enemy can be captured
     else
       @evacuation_dir = ALL_DIRS.find { |d| warrior.feel(d).empty? && !warrior.feel(d).stairs? } || :forward
-      @evacuation_enemies = enemies.size
       move(warrior, @evacuation_dir)
     end
   end
 
   def move(warrior, dir)
     @bound_dirs = []  # TODO floor map
+    @bound_damage = 0
     warrior.walk!(dir)
   end
 end
