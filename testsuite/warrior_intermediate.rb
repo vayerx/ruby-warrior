@@ -99,15 +99,11 @@ class Player
   end
 
   def unit_damage(unit)
-    unit.health.fdiv(ATTACK_POWER).ceil * unit.attack_power
+    (unit.health.fdiv(ATTACK_POWER).ceil - 1) * unit.attack_power
   end
 
   def damage_estimate(units)
-    begin
-      units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit) }.reduce(:+) || 0
-    rescue
-      (units.size - @captives_amount) * ENEMY_DMG * MAX_BLOWS
-    end
+    @bound_amount + (units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit) }.reduce(:+) || 0)
   end
 
   def select_walking_direction(warrior, units)
@@ -190,8 +186,8 @@ class Player
   end
 
   def need_evacuation?(warrior, enemies)
-    required = 1 + enemies.size * ENEMY_DMG
-    return ALL_DIRS.any? { |d| warrior.feel(d).empty? } && warrior.health < required
+    required_health = 1 + enemies.size * ENEMY_DMG
+    return warrior.health < required_health && ALL_DIRS.any? { |d| warrior.feel(d).empty? }
   end
 
   def evacuate(warrior, enemies)
