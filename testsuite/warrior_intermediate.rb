@@ -12,6 +12,8 @@ class Player
     @bound_dirs = []
     @bound_damage = 0
     @evacuation_dir = nil
+    @kill_with_power = nil  # remote bombing mode
+    @escaping_enemies = 0   # amount of enemies that will survive bombing
   end
 
   def play_turn(warrior)
@@ -43,11 +45,29 @@ class Player
     min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, 1 + damage_estimate(all_units) + @bound_damage].min
     puts "health=#{warrior.health} min_health=#{min_health}: damage_estimate=#{damage_estimate(all_units)} @bound_damage=#{@bound_damage}"
 
+    if @kill_with_power
+      if all_units.count{ |space| space.enemy? } == @escaping_enemies
+        # condemned enemies are dead
+        @kill_with_power = nil
+      else
+        return warrior.detonate!(@kill_with_power)
+      end
+    end
+
     # handle surrunding
     if enemies.size > 1
-      target_dir = warrior.respond_to?(:direction_of) ? warrior.direction_of(target_units[0]) : :none
-      enemy_dir = enemies.find { |dir| dir != target_dir }  # out-of-way enemy
-      return bind_enemy(warrior, enemy_dir) if enemy_dir
+      stepback = ALL_DIRS.find{ |dir| warrior.feel(dir).empty? }
+      if enemies.size > 2 && warrior.respond_to?(:detonate!) && stepback && get_captive_distance(warrior) > 1
+        # bomb 'em!!!1
+        @kill_with_power = opposite_direction(stepback)
+        @escaping_enemies = all_units.count{ |space| space.enemy? } - enemies.size
+        return move(warrior, stepback)
+      else
+        # just bind some
+        target_dir = warrior.respond_to?(:direction_of) ? warrior.direction_of(target_units[0]) : :none
+        enemy_dir = enemies.find { |dir| dir != target_dir }  # out-of-way enemy
+        return bind_enemy(warrior, enemy_dir) if enemy_dir
+      end
     end
 
     # am I dying?
@@ -82,8 +102,12 @@ class Player
     end
   end
 
+  def get_captive_distance(warrior)
+    @captives.map{ |space| warrior.distance_of(space) }.min || raise rescue 10
+  end
+
   def attack(warrior, dir)
-    captive_distance = @captives.map{ |space| warrior.distance_of(space) }.min || raise rescue 10
+    captive_distance = get_captive_distance(warrior)
     # TODO detonate the last unit if enough health
     if warrior.respond_to?(:look) && (warrior.look(dir).count{ |space| space.enemy? } > 1) && captive_distance > 2
       warrior.detonate!(dir)
