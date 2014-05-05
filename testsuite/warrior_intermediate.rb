@@ -184,7 +184,7 @@ class Player
   def bind_enemy(warrior, dir)
     @bound_amount += 1
     @bound_dirs << dir
-    @bound_damage = unit_damage(warrior.feel(dir).unit, :normal_strike)
+    @bound_damage = unit_damage(warrior.feel(dir).unit, :first_strike)
     warrior.bind!(dir)
   end
 
