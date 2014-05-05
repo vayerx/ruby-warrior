@@ -1,6 +1,7 @@
 class Player
   ALL_DIRS = [:left, :forward, :right, :backward]
   MAX_HEALTH = 20
+  BOMB_SELF_DMG = 4
   ATTACK_POWER = 5
   ENEMY_DMG = 3
   MAX_BLOWS = 5
@@ -50,14 +51,14 @@ class Player
         # condemned enemies are dead
         @kill_with_power = nil
       else
-        return warrior.detonate!(@kill_with_power)
+        return warrior.health <= BOMB_SELF_DMG ? warrior.rest! : warrior.detonate!(@kill_with_power)
       end
     end
 
     # handle surrunding
     if enemies.size > 1
       stepback = ALL_DIRS.find{ |dir| warrior.feel(dir).empty? }
-      if enemies.size > 2 && warrior.respond_to?(:detonate!) && stepback && get_captive_distance(warrior) > 1
+      if warrior.respond_to?(:detonate!) && stepback && get_captive_distance(warrior) > 1
         # bomb 'em!!!1
         @kill_with_power = opposite_direction(stepback)
         @escaping_enemies = all_units.count{ |space| space.enemy? } - enemies.size
