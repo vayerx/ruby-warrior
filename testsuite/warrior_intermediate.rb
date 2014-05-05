@@ -190,6 +190,11 @@ class Player
 
   def need_evacuation?(warrior, enemies)
     required_health = 1 + (enemies.map{ |dir| warrior.feel(dir).unit.attack_power }.reduce(:+) || 0)
+
+    # check if warrior any enemy will die this turn
+    dying_enemy_dir = enemies.find{ |dir| warrior.feel(dir).enemy? && warrior.feel(dir).unit.health <= ATTACK_POWER }
+    required_health -= warrior.feel(dying_enemy_dir).unit.attack_power if dying_enemy_dir
+
     return warrior.health < required_health && ALL_DIRS.any? { |d| warrior.feel(d).empty? }
   end
 
