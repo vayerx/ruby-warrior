@@ -3,8 +3,6 @@ class Player
   MAX_HEALTH = 20
   BOMB_SELF_DMG = 4
   ATTACK_POWER = 5
-  ENEMY_DMG = 3
-  MAX_BLOWS = 5
 
   def initialize
     @captives = nil
@@ -44,7 +42,6 @@ class Player
 
   def clean_em_up(warrior, target_units, enemies, all_units, hurry = false)
     min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, 1 + damage_estimate(all_units) + @bound_damage].min
-    puts "health=#{warrior.health} min_health=#{min_health}: damage_estimate=#{damage_estimate(all_units)} @bound_damage=#{@bound_damage}"
 
     if @kill_with_power
       if all_units.count{ |space| space.enemy? } == @escaping_enemies
