@@ -1,6 +1,7 @@
 class Player
   ALL_DIRS = [:left, :forward, :right, :backward]
   MAX_HEALTH = 20
+  BOMB_NEAR_DMG = 8
   BOMB_SELF_DMG = 4
   ATTACK_POWER = 5
 
@@ -75,11 +76,12 @@ class Player
     return warrior.rest! if need_a_rest(warrior, min_health, enemy_dirs, all_units, hurry)
 
     # look around for enemies
+    local_damage_estimate = damage_estimate(enemy_dirs.map{ |d| warrior.feel(d) })
     return self if handle_units(warrior, target_units, :enemy?) do |space, dir|
       # TODO find direction with the most amount of enemies
-      attack(warrior, dir)
+      attack(warrior, dir, local_damage_estimate)
     end
-    return attack(warrior, @bound_dirs.shift) unless @bound_dirs.empty? || hurry
+    return attack(warrior, @bound_dirs.shift, local_damage_estimate) unless @bound_dirs.empty? || hurry
 
     # look around for victims
     return self if handle_units(warrior, target_units, :captive?) do |space, dir|
@@ -104,10 +106,13 @@ class Player
     @captives.map{ |space| warrior.distance_of(space) }.min || raise rescue 10
   end
 
-  def attack(warrior, dir)
+  def can_detonate?(warrior, damage_estimate)
     captive_distance = get_captive_distance(warrior)
-    # TODO detonate the last unit if enough health
-    if warrior.respond_to?(:look) && (warrior.look(dir).count{ |space| space.enemy? } > 1) && captive_distance > 2
+    warrior.respond_to?(:detonate!) && captive_distance > 2 && warrior.health > BOMB_SELF_DMG + damage_estimate
+  end
+
+  def attack(warrior, dir, damage_estimate)
+    if can_detonate?(warrior, damage_estimate)
       warrior.detonate!(dir)
     else
       warrior.attack!(dir)
@@ -122,13 +127,22 @@ class Player
     return true
   end
 
-  def unit_damage(unit, priority)
-    bonus = (priority == :first_strike) ? 1 : 0
-    (unit.health.fdiv(ATTACK_POWER).ceil - bonus) * unit.attack_power
+  def unit_damage(unit, mode=:sword)
+    first_strike_bonus = 1    # always first strike
+    power = (mode == :bomb) ? BOMB_NEAR_DMG : ATTACK_POWER
+    bomb_penalty = (mode == :bomb) ? BOMB_SELF_DMG : 0
+    (unit.health.fdiv(power).ceil - first_strike_bonus) * (unit.attack_power + bomb_penalty)
+  end
+
+  def _damage_estimate(units, mode)
+    units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit, mode) }.reduce(:+) || 0
   end
 
   def damage_estimate(units)
-    units.select{ |space| space.enemy? }.map{ |enemy| unit_damage(enemy.unit, :first_strike) }.reduce(:+) || 0
+    # TODO fix for multiple units
+    sword_estimate = _damage_estimate(units, :sword)
+    bomb_estimate = _damage_estimate(units, :bomb)
+    [sword_estimate, bomb_estimate].min
   end
 
   def select_walking_direction(warrior, units)
@@ -206,7 +220,7 @@ class Player
   def bind_enemy(warrior, dir)
     @bound_amount += 1
     @bound_dirs << dir
-    @bound_damage = unit_damage(warrior.feel(dir).unit, :first_strike)
+    @bound_damage = unit_damage(warrior.feel(dir).unit)
     warrior.bind!(dir)
   end
 
