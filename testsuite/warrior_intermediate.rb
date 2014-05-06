@@ -30,17 +30,17 @@ class Player
     if units.empty? && !@evacuation_dir
         get_me_out_of_here(warrior)   # no one left
     else
-      enemies = get_nearby_units(warrior, :enemy?)
+      enemy_dirs = get_nearby_units_dirs(warrior, :enemy?)
       ticking = units.select{ |space| space.respond_to?(:ticking?) && space.ticking? }  # lets check if enemy can tick ;)
       if ticking.empty?
-        clean_em_up(warrior, units, enemies, units)
+        clean_em_up(warrior, units, enemy_dirs, units)
       else  # bomb!!!11
-        clean_em_up(warrior, ticking, enemies, units, :hurry)
+        clean_em_up(warrior, ticking, enemy_dirs, units, :hurry)
       end
     end
   end
 
-  def clean_em_up(warrior, target_units, enemies, all_units, hurry = false)
+  def clean_em_up(warrior, target_units, enemy_dirs, all_units, hurry = false)
     min_health = [hurry ? MAX_HEALTH/2 : MAX_HEALTH, 1 + damage_estimate(all_units) + @bound_damage].min
 
     if @kill_with_power
@@ -53,26 +53,26 @@ class Player
     end
 
     # handle surrunding
-    if enemies.size > 1
+    if enemy_dirs.size > 1
       stepback = ALL_DIRS.find{ |dir| warrior.feel(dir).empty? }
       if warrior.respond_to?(:detonate!) && stepback && get_captive_distance(warrior) > 1
         # bomb 'em!!!1
         @kill_with_power = opposite_direction(stepback)
-        @escaping_enemies = all_units.count{ |space| space.enemy? } - enemies.size
+        @escaping_enemies = all_units.count{ |space| space.enemy? } - enemy_dirs.size
         return move(warrior, stepback)
       else
         # just bind some
         target_dir = warrior.respond_to?(:direction_of) ? warrior.direction_of(target_units[0]) : :none
-        enemy_dir = enemies.find { |dir| dir != target_dir }  # out-of-way enemy
+        enemy_dir = enemy_dirs.find { |dir| dir != target_dir }  # out-of-way enemy
         return bind_enemy(warrior, enemy_dir) if enemy_dir
       end
     end
 
     # am I dying?
-    return evacuate(warrior, enemies) if !hurry && need_evacuation?(warrior, enemies)
+    return evacuate(warrior, enemy_dirs) if !hurry && need_evacuation?(warrior, enemy_dirs)
 
     # am I bleeding in a safe place?
-    return warrior.rest! if need_a_rest(warrior, min_health, enemies, all_units, hurry)
+    return warrior.rest! if need_a_rest(warrior, min_health, enemy_dirs, all_units, hurry)
 
     # look around for enemies
     return self if handle_units(warrior, target_units, :enemy?) do |space, dir|
@@ -114,10 +114,10 @@ class Player
     end
   end
 
-  def need_a_rest(warrior, min_health, enemies, all_units, hurry)
-    return false if warrior.health >= min_health || !enemies.empty?
+  def need_a_rest(warrior, min_health, enemy_dirs, all_units, hurry)
+    return false if warrior.health >= min_health || !enemy_dirs.empty?
     return true if @evacuation_dir
-    return false if all_units.size == @captives_amount
+    return false if all_units.size == @captives_amount && warrior.respond_to?(:listen)
     return false if (hurry || @bound_amount == 0) && (@bound_amount + @captives_amount == all_units.size)
     return true
   end
@@ -173,11 +173,11 @@ class Player
     if warrior.respond_to?(:listen)
       warrior.listen
     else
-      get_nearby_units(warrior, :enemy?) + get_nearby_units(warrior, :captive?)
+      (get_nearby_units_dirs(warrior, :enemy?) + get_nearby_units_dirs(warrior, :captive?)).map{ |d| warrior.feel(d) }
     end
   end
 
-  def get_nearby_units(warrior, type_check)
+  def get_nearby_units_dirs(warrior, type_check)
     ALL_DIRS.select { |dir| warrior.feel(dir).send(type_check) }
   end
 
@@ -210,20 +210,21 @@ class Player
     warrior.bind!(dir)
   end
 
-  def need_evacuation?(warrior, enemies)
-    required_health = 1 + (enemies.map{ |dir| warrior.feel(dir).unit.attack_power }.reduce(:+) || 0)
+  def need_evacuation?(warrior, enemy_dirs)
+    required_health = 1 + (enemy_dirs.map{ |dir| warrior.feel(dir).unit.attack_power }.reduce(:+) || 0)
 
     # check if warrior any enemy will die this turn
-    dying_enemy_dir = enemies.find{ |dir| warrior.feel(dir).enemy? && warrior.feel(dir).unit.health <= ATTACK_POWER }
+    dying_enemy_dir = enemy_dirs.find{ |dir| warrior.feel(dir).enemy? && warrior.feel(dir).unit.health <= ATTACK_POWER }
     required_health -= warrior.feel(dying_enemy_dir).unit.attack_power if dying_enemy_dir
 
     return warrior.health < required_health && ALL_DIRS.any? { |d| warrior.feel(d).empty? }
   end
 
-  def evacuate(warrior, enemies)
-    if warrior.respond_to?(:bind!) && enemies.size == 1
-      bind_enemy(warrior, enemies[0])   # don't evacuate if enemy can be captured
+  def evacuate(warrior, enemy_dirs)
+    if warrior.respond_to?(:bind!) && enemy_dirs.size == 1
+      bind_enemy(warrior, enemy_dirs[0])   # don't evacuate if enemy can be captured
     else
+      @bound_damage = damage_estimate(enemy_dirs.map{ |d| warrior.feel(d) })  # hack for early levels (no :listen!)
       @evacuation_dir = ALL_DIRS.find { |d| warrior.feel(d).empty? && !warrior.feel(d).stairs? } || :forward
       move(warrior, @evacuation_dir)
     end
