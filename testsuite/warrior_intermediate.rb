@@ -106,13 +106,14 @@ class Player
     @captives.map{ |space| warrior.distance_of(space) }.min || raise rescue 10
   end
 
-  def can_detonate?(warrior, damage_estimate)
+  def can_detonate?(warrior, dir, damage_estimate)
     captive_distance = get_captive_distance(warrior)
-    warrior.respond_to?(:detonate!) && captive_distance > 2 && warrior.health > BOMB_SELF_DMG + damage_estimate
+    usefull = warrior.feel(dir).unit.health > ATTACK_POWER
+    warrior.respond_to?(:detonate!) && captive_distance > 2 && warrior.health > BOMB_SELF_DMG + damage_estimate && usefull
   end
 
   def attack(warrior, dir, damage_estimate)
-    if can_detonate?(warrior, damage_estimate)
+    if can_detonate?(warrior, dir, damage_estimate)
       warrior.detonate!(dir)
     else
       warrior.attack!(dir)
